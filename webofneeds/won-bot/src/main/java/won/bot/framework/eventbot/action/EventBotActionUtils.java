@@ -18,7 +18,9 @@ package won.bot.framework.eventbot.action;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import won.bot.framework.bot.context.BotContext;
 import won.bot.framework.eventbot.EventListenerContext;
+import won.bot.framework.eventbot.action.impl.mail.model.SubscribeStatus;
 import won.bot.framework.eventbot.action.impl.mail.model.WonURI;
 import won.bot.framework.eventbot.event.Event;
 import won.bot.framework.eventbot.event.impl.wonmessage.FailureResponseEvent;
@@ -37,6 +39,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -46,6 +51,9 @@ import java.util.Properties;
 public class EventBotActionUtils
 {
     private static final Logger logger = LoggerFactory.getLogger(EventBotActionUtils.class);
+
+    private static final String USER_SUBSCRIBE_COLLECTION = "user_subscribe_status";
+    private static final String USER_CACHED_MAILS_COLLECTION = "user_cached_mails";
 
     public static void rememberInList(EventListenerContext ctx, URI uri, String uriListName) {
         if (uriListName != null && uriListName.trim().length() > 0){
@@ -136,14 +144,14 @@ public class EventBotActionUtils
 
     //Util Methods to Get/Remove/Add Uri -> MimeMessage Relation
     public static void removeUriMimeMessageRelation(EventListenerContext context, String mapName, URI needURI) {
-        context.getBotContext().removeGeneric(mapName, needURI.toString());
+        context.getBotContext().removeFromObjectMap(mapName, needURI.toString());
     }
 
     public static MimeMessage getMimeMessageForURI(EventListenerContext context, String mapName, URI uri)
       throws MessagingException {
 
         // use the empty default session here for reconstructing the mime message
-        byte[] byteMsg = (byte[]) context.getBotContext().getGeneric(mapName, uri.toString());
+        byte[] byteMsg = (byte[]) context.getBotContext().loadFromObjectMap(mapName, uri.toString());
         ByteArrayInputStream is = new ByteArrayInputStream(byteMsg);
         return new MimeMessage(Session.getDefaultInstance(new Properties(), null), is);
     }
@@ -153,19 +161,56 @@ public class EventBotActionUtils
 
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         mimeMessage.writeTo(os);
-        context.getBotContext().putGeneric(mapName, needURI.toString(), os.toByteArray());
+        context.getBotContext().saveToObjectMap(mapName, needURI.toString(), os.toByteArray());
     }
 
     //Util Methods to Get/Remove/Add MailId -> URI Relation
     public static void removeMailIdWonURIRelation(EventListenerContext context, String mapName, String mailId) {
-        context.getBotContext().removeGeneric(mapName, mailId);
+        context.getBotContext().removeFromObjectMap(mapName, mailId);
     }
 
     public static WonURI getWonURIForMailId(EventListenerContext context, String mapName, String mailId) {
-        return (WonURI) context.getBotContext().getGeneric(mapName, mailId);
+        return (WonURI) context.getBotContext().loadFromObjectMap(mapName, mailId);
     }
 
     public static void addMailIdWonURIRelation(EventListenerContext context, String mapName, String mailId, WonURI uri) {
-        context.getBotContext().putGeneric(mapName, mailId, uri);
+        context.getBotContext().saveToObjectMap(mapName, mailId, uri);
+    }
+
+    public static void addCachedMailsForMailAddress(BotContext botContext, MimeMessage mimeMessage)
+      throws IOException, MessagingException {
+
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
+        mimeMessage.writeTo(os);
+        botContext.addToListMap(USER_CACHED_MAILS_COLLECTION, mimeMessage.getFrom().toString(), os.toByteArray());
+    }
+
+    public static Collection<MimeMessage> loadCachedMailsForMailAddress(BotContext botContext, String mailAddress)
+      throws MessagingException {
+
+        List<MimeMessage> mimeMessages = new LinkedList<>();
+        List<Object> objectList = botContext.loadFromListMap(USER_CACHED_MAILS_COLLECTION, mailAddress);
+        for (Object o : objectList) {
+
+            // use the empty default session here for reconstructing the mime message
+            byte[] byteMsg = (byte[]) o;
+            ByteArrayInputStream is = new ByteArrayInputStream(byteMsg);
+            mimeMessages.add(new MimeMessage(Session.getDefaultInstance(new Properties(), null), is));
+        }
+
+        return mimeMessages;
+    }
+
+    public static void setSubscribeStatusForMailAddress(
+      BotContext botContext, String mailAddress, SubscribeStatus status) {
+        botContext.saveToObjectMap(USER_SUBSCRIBE_COLLECTION, mailAddress, status);
+    }
+
+    public static SubscribeStatus getSubscribeStatusForMailAddress(BotContext botContext, String mailAddress) {
+        return (SubscribeStatus) botContext.loadFromObjectMap(USER_SUBSCRIBE_COLLECTION, mailAddress);
+    }
+
+    public static void removeCachedMailsForMailAddress(BotContext botContext, String mailAddress) {
+        botContext.dropCollection(mailAddress);
     }
 }
