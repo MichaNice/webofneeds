@@ -1,12 +1,16 @@
 package won.bot.framework.eventbot.action.impl.mail.receive;
 
+import won.bot.framework.bot.context.BotContext;
 import won.bot.framework.eventbot.EventListenerContext;
 import won.bot.framework.eventbot.action.BaseEventBotAction;
+import won.bot.framework.eventbot.action.EventBotActionUtils;
+import won.bot.framework.eventbot.action.impl.mail.model.SubscribeStatus;
 import won.bot.framework.eventbot.bus.EventBus;
 import won.bot.framework.eventbot.event.Event;
 import won.bot.framework.eventbot.event.impl.mail.CreateNeedFromMailEvent;
 import won.bot.framework.eventbot.event.impl.mail.MailCommandEvent;
 import won.bot.framework.eventbot.event.impl.mail.MailReceivedEvent;
+import won.bot.framework.eventbot.event.impl.mail.WelcomeMailEvent;
 
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
@@ -30,8 +34,29 @@ public class MailParserAction extends BaseEventBotAction {
 
             try {
                 if (mailContentExtractor.getBasicNeedType(message) != null) {
-                    logger.debug("received a create mail publishing the CreateNeedFromMail event");
-                    bus.publish(new CreateNeedFromMailEvent(message));
+
+                    BotContext botContext = getEventListenerContext().getBotContext();
+                    String senderMailAddress = message.getFrom().toString();
+                    SubscribeStatus subscribeStatus =
+                      EventBotActionUtils.getSubscribeStatusForMailAddress(botContext, senderMailAddress);
+
+                    // depending of the user has subscribed/unsubscribed (via mailto links) his mails will be
+                    // published as needs, discarded or cached
+                    if (SubscribeStatus.SUBSCRIBED.equals(subscribeStatus)) {
+                        logger.info("received a create mail from subscribed user {} with subject '{}' so publish as need",
+                          senderMailAddress, message.getSubject());
+                        bus.publish(new CreateNeedFromMailEvent(message));
+                    } else if (SubscribeStatus.UNSUBSCRIBED.equals(subscribeStatus)) {
+                        logger.info("received mail from unsubscribed user {} so discard mail with subject '{}'",
+                                    senderMailAddress, message.getSubject());
+                    } else {
+                        logger.info(
+                          "received a create mail from new user {} with subject '{}' so cache it and send welcome mail",
+                          senderMailAddress, message.getSubject());
+                        EventBotActionUtils.addCachedMailsForMailAddress(botContext, message);
+                        bus.publish(new WelcomeMailEvent(message));
+                    }
+
                 } else if (MailCommandAction.isCommandMail(message)) {
                     logger.debug("received a command mail publishing the MailCommand event");
                     bus.publish(new MailCommandEvent(message));

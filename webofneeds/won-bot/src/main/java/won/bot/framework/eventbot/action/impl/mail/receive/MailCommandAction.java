@@ -5,6 +5,7 @@ import won.bot.framework.eventbot.EventListenerContext;
 import won.bot.framework.eventbot.action.BaseEventBotAction;
 import won.bot.framework.eventbot.action.EventBotActionUtils;
 import won.bot.framework.eventbot.action.impl.mail.model.ActionType;
+import won.bot.framework.eventbot.action.impl.mail.model.SubscribeStatus;
 import won.bot.framework.eventbot.action.impl.mail.model.WonURI;
 import won.bot.framework.eventbot.bus.EventBus;
 import won.bot.framework.eventbot.event.Event;
@@ -12,6 +13,7 @@ import won.bot.framework.eventbot.event.impl.command.SendTextMessageOnConnection
 import won.bot.framework.eventbot.event.impl.mail.CloseConnectionEvent;
 import won.bot.framework.eventbot.event.impl.mail.MailCommandEvent;
 import won.bot.framework.eventbot.event.impl.mail.OpenConnectionEvent;
+import won.bot.framework.eventbot.event.impl.mail.SubscribeUnsubscribeEvent;
 import won.protocol.util.WonRdfUtils;
 
 import javax.mail.MessagingException;
@@ -62,6 +64,15 @@ public class MailCommandAction extends BaseEventBotAction {
                         bus.publish(new SendTextMessageOnConnectionEvent(
                           mailContentExtractor.getTextMessage(message), wonUri.getUri()));
                         break;
+
+                    case SUBSCRIBE:
+                        bus.publish(new SubscribeUnsubscribeEvent(message, SubscribeStatus.SUBSCRIBED));
+                        break;
+
+                    case UNSUBSCRIBE:
+                        bus.publish(new SubscribeUnsubscribeEvent(message, SubscribeStatus.UNSUBSCRIBED));
+                        break;
+
                     case NO_ACTION:
                     default:
                         //INVALID COMMAND
@@ -89,13 +100,15 @@ public class MailCommandAction extends BaseEventBotAction {
 
     private ActionType determineAction(EventListenerContext ctx, MimeMessage message, WonURI wonUri) {
         try {
+
+            ActionType mailAction = mailContentExtractor.getMailAction(message);
             switch(wonUri.getType()) {
                 case CONNECTION:
-                    boolean connected = WonRdfUtils.ConnectionUtils.isConnected(ctx.getLinkedDataSource().getDataForResource(wonUri.getUri()), wonUri.getUri());
-
-                    if (mailContentExtractor.isCmdClose(message)) {
+                    boolean connected = WonRdfUtils.ConnectionUtils.isConnected(
+                      ctx.getLinkedDataSource().getDataForResource(wonUri.getUri()), wonUri.getUri());
+                    if (ActionType.CLOSE_CONNECTION.equals(mailAction)) {
                         return ActionType.CLOSE_CONNECTION;
-                    }else if(!connected && mailContentExtractor.isCmdConnect(message)){
+                    }else if(!connected && ActionType.OPEN_CONNECTION.equals(mailAction)){
                         return ActionType.OPEN_CONNECTION;
                     }else if(connected){
                         return ActionType.SENDMESSAGE;
@@ -106,7 +119,7 @@ public class MailCommandAction extends BaseEventBotAction {
                 case NEED:
                     //TODO: implement need actions like close/reopen etc.
                 default:
-                    return ActionType.NO_ACTION;
+                    return mailAction;
             }
         }catch(MessagingException me){
             me.printStackTrace();

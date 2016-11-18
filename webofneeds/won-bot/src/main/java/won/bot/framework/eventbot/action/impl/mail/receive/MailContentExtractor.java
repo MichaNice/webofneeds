@@ -1,5 +1,6 @@
 package won.bot.framework.eventbot.action.impl.mail.receive;
 
+import won.bot.framework.eventbot.action.impl.mail.model.ActionType;
 import won.protocol.model.BasicNeedType;
 
 import javax.mail.Address;
@@ -44,9 +45,11 @@ public class MailContentExtractor
   // check if the need created from the mail should be not matched with other needs
   private Pattern doNotMatchPattern;
 
-  // check if this is a command mail of type close or connect
+  // check if this is a command mail of different action types
   private Pattern cmdClosePattern;
   private Pattern cmdConnectPattern;
+  private Pattern cmdSubscribePattern;
+  private Pattern cmdUnsubscribePattern;
 
   public void setDemandTypePattern(final Pattern demandTypePattern) {
     this.demandTypePattern = demandTypePattern;
@@ -96,12 +99,27 @@ public class MailContentExtractor
     this.cmdConnectPattern = cmdConnectPattern;
   }
 
-  public boolean isCmdClose(MimeMessage message) throws IOException, MessagingException {
-    return cmdClosePattern.matcher(getMailText(message)).matches();
+  public void setCmdSubscribePattern(final Pattern cmdSubscribePattern) {
+    this.cmdSubscribePattern = cmdSubscribePattern;
   }
 
-  public boolean isCmdConnect(MimeMessage message) throws IOException, MessagingException {
-    return cmdConnectPattern.matcher(getMailText(message)).matches();
+  public void setCmdUnsubscribePattern(final Pattern cmdUnsubscribePattern) {
+    this.cmdUnsubscribePattern = cmdUnsubscribePattern;
+  }
+
+  public ActionType getMailAction(MimeMessage message) throws IOException, MessagingException {
+
+    if (cmdSubscribePattern.matcher(message.getSubject()).matches()) {
+      return ActionType.SUBSCRIBE;
+    } else if (cmdUnsubscribePattern.matcher(message.getSubject()).matches()) {
+      return ActionType.UNSUBSCRIBE;
+    } else if (cmdClosePattern.matcher(message.getSubject()).matches()) {
+      return ActionType.CLOSE_CONNECTION;
+    } else if (cmdConnectPattern.matcher(message.getSubject()).matches()) {
+      return ActionType.OPEN_CONNECTION;
+    } else {
+      return ActionType.NO_ACTION;
+    }
   }
 
   public boolean isDoNotMatch(MimeMessage message) throws MessagingException {
